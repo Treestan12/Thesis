@@ -1,66 +1,99 @@
 import React, { Component } from 'react';
-import { Map, GoogleApiWrapper, Marker } from 'google-maps-react';
+import { Map, GoogleApiWrapper, Circle, Marker, Polyline } from 'google-maps-react';
 import { db } from '../Firebase';
 import { collection, getDocs } from 'firebase/firestore';
 
-class Blob extends Component {
-  render() {
-    const { latitude, longitude, onMouseOver } = this.props;
-
-    const style = {
-      position: 'absolute',
-      top: latitude,
-      left: longitude,
-      backgroundColor: `hsl(${Math.random() * 360}, 70%, 60%)`,
-      borderRadius: '50%',
-    };
-
-    return (
-      <div
-        style={style}
-        onMouseOver={() => onMouseOver(latitude, longitude)}
-      />
-    );
-  }
-}
-
 class MapContainer extends Component {
   state = {
-    showMap: true,
-    mapViewClicked: false,
-    latitude: '',
-    longitude: '',
-    markerPosition: null,
     data: [],
-  };
-
-  onBlobMouseOver = (latitude, longitude) => {
-    alert(`GPS Location: (${latitude}, ${longitude}`);
+    showLocalMap: false,
+    localData: [], 
   };
 
   async componentDidMount() {
+    await this.fetchData();
+  }
+
+  fetchData = async () => {
     const querySnapshot = await getDocs(collection(db, 'gpsdata'));
     const data = [];
     querySnapshot.forEach((doc) => {
       data.push({
         id: doc.id,
-        latitude: doc.data().latitude,
-        longitude: doc.data().longitude,
+        latitude: doc.data().gpsdata.latitude,
+        longitude: doc.data().gpsdata.longitude,
+        timestamp: doc.data().timestamp,
+        fishCount: doc.data().fishcount,
       });
     });
     this.setState({ data });
-  }
+  };
 
-  toggleView = () => {
-    this.setState((prevState) => ({
-      showMap: !prevState.showMap,
-      mapViewClicked: true,
-    }));
+  handleCircleClick = (item) => {
+    alert(`GPS Location: (${item.latitude}, ${item.longitude}), Timestamp: ${item.timestamp}, Fish Count: ${item.fishCount}`);
+  };
+
+  handleToggleLocalMap = () => {
+    this.setState({ showLocalMap: !this.state.showLocalMap });
+  };
+
+  handleFileChange = (event) => {
+    const file = event.target.files[0];
+    const reader = new FileReader();
+    reader.onload = () => {
+      const fileContent = reader.result;
+      const localData = this.parseFileContent(fileContent);
+      this.setState({ localData });
+    };
+    reader.readAsText(file);
+  };
+
+  parseFileContent = (fileContent) => {
+    const lines = fileContent.split('\n');
+    const localData = [];
+    let lastDetectStart = null;
+    let lastDetectStop = null;
+
+    lines.forEach((line) => {
+      const parts = line.split(':');
+      if (parts[0] === 'Route') {
+        const timestamp = parts[1];
+        const lat = parseFloat(parts[2].split(' ')[1]);
+        const lon = parseFloat(parts[2].split(' ')[2]);
+        localData.push({ type: 'Route', timestamp, lat, lon });
+      } else if (parts[0] === 'DetectStart') {
+        lastDetectStart = line;
+      } else if (parts[0] === 'DetectStop') {
+        if (lastDetectStart && !lastDetectStop) {
+          const latStart = parseFloat(lastDetectStart.split(' ')[1].split(':')[1]);
+          const lonStart = parseFloat(lastDetectStart.split(' ')[2].split(':')[1]);
+          const latStop = parseFloat(line.split(' ')[1].split(':')[1]);
+          const lonStop = parseFloat(line.split(' ')[2].split(':')[1]);
+          const dur = parseInt(line.split(' ')[3].split(':')[1]);
+          const latMid = (latStart + latStop) / 2;
+          const lonMid = (lonStart + lonStop) / 2;
+          const timestampStart = lastDetectStart.split(':')[1] + ":" + lastDetectStart.split(':')[2] + ":" + lastDetectStart.split(':')[3];
+          const timestampStop = line.split(':')[1] + ":" + line.split(':')[2] + ":" + line.split(':')[3];
+          localData.push({ type: 'DetectStop', timestamp: timestampStart, lat: latMid, lon: lonMid, dur });
+        } else {
+          const latStop = parseFloat(line.split(' ')[1].split(':')[1]);
+          const lonStop = parseFloat(line.split(' ')[2].split(':')[1]);
+          const dur = parseInt(line.split(' ')[3].split(':')[1]);
+          const timestampStop = line.split(':')[1] + ":" + line.split(':')[2] + ":" + line.split(':')[3];
+          const timestampStart = lastDetectStop ? lastDetectStop.split(':')[1] + ":" + lastDetectStop.split(':')[2] + ":" + lastDetectStop.split(':')[3] : timestampStop;
+          localData.push({ type: 'DetectStop', timestamp: timestampStart, lat: latStop, lon: lonStop, dur });
+        }
+        lastDetectStop = line;
+      }
+    });
+
+    console.log('Parsed Data:', localData); 
+    return localData;
   };
 
   render() {
     const { google } = this.props;
-    const { data } = this.state;
+    const { data, showLocalMap, localData } = this.state;
 
     const mapStyles = {
       width: '100%',
@@ -72,47 +105,96 @@ class MapContainer extends Component {
       lng: 123.24216,
     };
 
+    const polylinePaths = localData.filter(item => item.type === 'Route').map(item => ({ lat: item.lat, lng: item.lon }));
+
     return (
       <div>
-        {!this.state.mapViewClicked && (
-          <div>
-            <button onClick={this.toggleView}>
-              {this.state.showMap ? 'View Data' : 'View Map'}
-            </button>
-          </div>
-        )}
-        {this.state.showMap ? (
-          <div>
-            <Map
-              google={google}
-              zoom={14}
-              style={mapStyles}
-              initialCenter={defaultLocation}
-            >
-              {data.map((item) => (
-                <Blob
-                  key={`${item.latitude}-${item.longitude}`}
-                  latitude={item.latitude}
-                  longitude={item.longitude}
-                  onMouseOver={() => this.onBlobMouseOver(item.latitude, item.longitude)}
-                />
-              ))}
-            </Map>
-            {this.state.mapViewClicked && (
-              <button onClick={this.toggleView}>Back</button>
-            )}
-          </div>
-        ) : (
-          <div>
-            <h2>Data Display</h2>
-            <p>Data goes here...</p>
-          </div>
+        <button onClick={this.handleToggleLocalMap}>
+          {showLocalMap ? 'View Realtime' : 'View Local'}
+        </button>
+        <input type="file" onChange={this.handleFileChange} />
+        <Map
+          google={google}
+          zoom={14}
+          style={mapStyles}
+          initialCenter={defaultLocation}
+        >
+          {data.map((item) => (
+            <Circle
+              key={item.id}
+              center={{ lat: item.latitude, lng: item.longitude }}
+              radius={item.fishCount * 2}
+              options={{
+                fillColor: '#ff0000',
+                strokeColor: '#ff0000',
+                strokeOpacity: 0.8,
+                strokeWeight: 2,
+                fillOpacity: 0.35, 
+                clickable: true,
+              }}
+              onClick={() => this.handleCircleClick(item)}
+            />
+          ))}
+          <Polyline
+            path={polylinePaths}
+            options={{
+              strokeColor: '#000080',
+              strokeOpacity: 1,
+              strokeWeight: 2,
+            }}
+          />
+        </Map>
+        {showLocalMap && (
+          <Map
+            google={google}
+            zoom={14}
+            style={mapStyles}
+            initialCenter={defaultLocation}
+          >
+            {localData.map((item, index) => {
+              if (item.type === 'Route') {
+                return (
+                  <Marker
+                    key={index}
+                    position={{ lat: item.lat, lng: item.lon }}
+                    options={{
+                      clickable: true,
+                    }}
+                  />
+                );
+              } else if (item.type === 'DetectStop') {
+                const radius = item.dur * 1;
+                return (
+                  <Circle
+                    key={index}
+                    center={{ lat: item.lat, lng: item.lon }}
+                    radius={radius}
+                    options={{
+                      fillColor: '#ff0000',
+                      strokeColor: '#ff0000',
+                      strokeOpacity: 0.8,
+                      strokeWeight: 2,
+                      fillOpacity: 0.35,  
+                      clickable: true,
+                    }}
+                  />
+                );
+              }
+              return null;
+            })}
+            <Polyline
+              path={polylinePaths}
+              options={{
+                strokeColor: '#000080',
+                strokeOpacity: 1,
+                strokeWeight: 2,
+              }}
+            />
+          </Map>
         )}
       </div>
     );
   }
 }
 
-export default GoogleApiWrapper({ apiKey: 'AIzaSyDbhA2fS8wPqK_IJX5JqYS3O1qT5zDvE6s' })(
-  MapContainer
-);
+export default GoogleApiWrapper({ apiKey: 'AIzaSyDbhA2fS8wPqK_IJX5JqYS3O1qT5zDvE6s' })(MapContainer);

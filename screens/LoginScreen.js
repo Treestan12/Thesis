@@ -46,18 +46,18 @@ const LoginScreen = () => {
   return (
     <ImageBackground source={require('../assets/loginbackground.jpg')} style={styles.backgroundImage}>
       <View style={styles.container}>
-        <Text style={styles.title}>{isSignUp ? "Sign Up" : "Login"}</Text>
+        <Text style={styles.title}>{'ECOFISH'}</Text>
         <TextInput
           style={styles.input}
           placeholder="Username"
-          placeholderTextColor="#ffffff"
+          placeholderTextColor="#000000"
           onChangeText={(text) => setUsername(text)}
           value={username}
         />
         <TextInput
           style={styles.input}
           placeholder="Password"
-          placeholderTextColor="#ffffff"
+          placeholderTextColor="#000000"
           onChangeText={(text) => setPassword(text)}
           value={password}
           secureTextEntry
@@ -89,9 +89,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   title: {
-    fontSize: 24,
+    fontSize: 70,
     fontWeight: 'bold',
-    marginVertical: 10,
+    marginVertical: 50,
     color: '#ffffff',
   },
   input: {
@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
     borderColor: '#ffffff',
     borderRadius: 5,
     backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    color: '#ffffff',
+    color: '#000000',
   },
   button: {
     backgroundColor: '#3498db',

@@ -5,6 +5,7 @@ import HomeScreen from './screens/HomeScreen';
 import LoginScreen from './screens/LoginScreen'; 
 import DataScreen from './screens/DataScreen';
 
+
 const Stack = createStackNavigator();
 
 const App = () => {
