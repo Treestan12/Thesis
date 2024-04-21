@@ -1,5 +1,5 @@
 import React, { Component } from 'react';
-import { Map, GoogleApiWrapper, Circle, Marker, Polyline } from 'google-maps-react';
+import { Map, GoogleApiWrapper, Marker, Polyline } from 'google-maps-react';
 import { db } from '../Firebase';
 import { collection, getDocs } from 'firebase/firestore';
 
@@ -7,7 +7,7 @@ class MapContainer extends Component {
   state = {
     data: [],
     showLocalMap: false,
-    localData: [], 
+    localData: [],
   };
 
   async componentDidMount() {
@@ -74,20 +74,20 @@ class MapContainer extends Component {
           const lonMid = (lonStart + lonStop) / 2;
           const timestampStart = lastDetectStart.split(':')[1] + ":" + lastDetectStart.split(':')[2] + ":" + lastDetectStart.split(':')[3];
           const timestampStop = line.split(':')[1] + ":" + line.split(':')[2] + ":" + line.split(':')[3];
-          localData.push({ type: 'DetectStop', timestamp: timestampStart, lat: latMid, lon: lonMid, dur });
+          localData.push({ type: 'DetectStop', timestamp: timestampStart, timestampStop, lat: latMid, lon: lonMid, dur });
         } else {
           const latStop = parseFloat(line.split(' ')[1].split(':')[1]);
           const lonStop = parseFloat(line.split(' ')[2].split(':')[1]);
           const dur = parseInt(line.split(' ')[3].split(':')[1]);
-          const timestampStop = line.split(':')[1] + ":" + line.split(':')[2] + ":" + line.split(':')[3];
+          const timestampStop = line.split('')[3].split(':')[1] + ":" + line.split(' ')[3].split(':')[2] + ":" + line.split(' ')[3].split(':')[3];
           const timestampStart = lastDetectStop ? lastDetectStop.split(':')[1] + ":" + lastDetectStop.split(':')[2] + ":" + lastDetectStop.split(':')[3] : timestampStop;
-          localData.push({ type: 'DetectStop', timestamp: timestampStart, lat: latStop, lon: lonStop, dur });
+          localData.push({ type: 'DetectStop', timestamp: timestampStart, timestampStop, lat: latStop, lon: lonStop, dur });
         }
         lastDetectStop = line;
       }
     });
 
-    console.log('Parsed Data:', localData); 
+    console.log('Parsed Data:', localData);
     return localData;
   };
 
@@ -105,7 +105,17 @@ class MapContainer extends Component {
       lng: 123.24216,
     };
 
-    const polylinePaths = localData.filter(item => item.type === 'Route').map(item => ({ lat: item.lat, lng: item.lon }));
+    const blobIcon = (size) => ({
+      url: 'assets/blob.png', 
+      scaledSize: new window.google.maps.Size(size, size), 
+    });
+    
+    const dataPolylinePaths = data.filter(item => item.latitude && item.longitude).map(item => ({ lat: item.latitude, lng: item.longitude }));
+    const localPolylinePaths = localData
+      .filter(item => item.type === 'Route')
+      .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+      .map(item => ({ lat: item.lat, lng: item.lon }));
+
 
     return (
       <div>
@@ -120,23 +130,15 @@ class MapContainer extends Component {
           initialCenter={defaultLocation}
         >
           {data.map((item) => (
-            <Circle
+            <Marker
               key={item.id}
-              center={{ lat: item.latitude, lng: item.longitude }}
-              radius={item.fishCount * 2}
-              options={{
-                fillColor: '#ff0000',
-                strokeColor: '#ff0000',
-                strokeOpacity: 0.8,
-                strokeWeight: 2,
-                fillOpacity: 0.35, 
-                clickable: true,
-              }}
+              position={{ lat: item.latitude, lng: item.longitude }}
+              icon={blobIcon(item.fishCount * 3)} 
               onClick={() => this.handleCircleClick(item)}
             />
           ))}
           <Polyline
-            path={polylinePaths}
+            path={dataPolylinePaths}
             options={{
               strokeColor: '#000080',
               strokeOpacity: 1,
@@ -152,38 +154,22 @@ class MapContainer extends Component {
             initialCenter={defaultLocation}
           >
             {localData.map((item, index) => {
+              let size;
               if (item.type === 'Route') {
-                return (
-                  <Marker
-                    key={index}
-                    position={{ lat: item.lat, lng: item.lon }}
-                    options={{
-                      clickable: true,
-                    }}
-                  />
-                );
+                size = 20;
               } else if (item.type === 'DetectStop') {
-                const radius = item.dur * 1;
-                return (
-                  <Circle
-                    key={index}
-                    center={{ lat: item.lat, lng: item.lon }}
-                    radius={radius}
-                    options={{
-                      fillColor: '#ff0000',
-                      strokeColor: '#ff0000',
-                      strokeOpacity: 0.8,
-                      strokeWeight: 2,
-                      fillOpacity: 0.35,  
-                      clickable: true,
-                    }}
-                  />
-                );
+                size = item.dur * 2;
               }
-              return null;
+              return (
+                <Marker
+                  key={index}
+                  position={{ lat: item.lat, lng: item.lon }}
+                  icon={blobIcon(size)}
+                />
+              );
             })}
             <Polyline
-              path={polylinePaths}
+              path={localPolylinePaths}
               options={{
                 strokeColor: '#000080',
                 strokeOpacity: 1,
