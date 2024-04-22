@@ -1,21 +1,39 @@
 import React, { Component } from 'react';
 import { Map, GoogleApiWrapper, Circle, Marker, Polyline } from 'google-maps-react';
 import { db } from '../Firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, addDoc } from 'firebase/firestore';
 
 class MapContainer extends Component {
   state = {
     data: [],
     showLocalMap: false,
     localData: [],
+    showSaveButton: false,
+    selectedCollection: '',
+    collections: [],
+    customCollectionName: '',
   };
 
   async componentDidMount() {
-    await this.fetchData();
+    const collections = await this.fetchCollections();
+    this.setState({ collections });
   }
 
+  fetchCollections = async () => {
+    const collections = await db.getCollections();
+    const collectionIds = collections.map((collection) => collection.id);
+    this.setState({ collections: collectionIds });
+  };
+
   fetchData = async () => {
-    const querySnapshot = await getDocs(collection(db, 'gpsdata'));
+    const { selectedCollection } = this.state;
+
+    if (!selectedCollection) {
+      alert('Please select a collection.');
+      return;
+    }
+
+    const querySnapshot = await getDocs(collection(db, selectedCollection));
     const data = [];
     querySnapshot.forEach((doc) => {
       data.push({
@@ -29,6 +47,14 @@ class MapContainer extends Component {
     this.setState({ data });
   };
 
+  handleCollectionChange = (event) => {
+    this.setState({ selectedCollection: event.target.value });
+  };
+
+  handleCustomCollectionNameChange = (event) => {
+    this.setState({ customCollectionName: event.target.value });
+  };
+
   handleCircleClick = (item) => {
     alert(`GPS Location: (${item.latitude}, ${item.longitude}), Timestamp: ${item.timestamp}, Fish Count: ${item.fishCount}`);
   };
@@ -39,26 +65,66 @@ class MapContainer extends Component {
 
   handleFileChange = async (event) => {
     await this.handleFileUpload(event);
+    this.setState({ showSaveButton: true });
   };
 
   handleSecondFileChange = async (event) => {
     await this.handleFileUpload(event);
+    this.setState({ showSaveButton: true });
   };
 
   handleFileUpload = async (event) => {
     const files = event.target.files;
     let localData = [...this.state.localData];
-  
+
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const fileContent = await this.readFileContent(file);
       const parsedData = this.parseFileContent(fileContent);
       localData = [...localData, ...parsedData];
     }
-  
+
     this.setState({ localData });
   };
-  
+
+  handleSaveToFirestore = async () => {
+    const { localData, customCollectionName } = this.state;
+
+    if (!customCollectionName) {
+      alert('Please enter a custom collection name.');
+      return;
+    }
+
+    const dbRef = collection(db, customCollectionName);
+    const promises = localData.map((item) => {
+      if (item.type === 'Route') {
+        if (item.timestamp && item.lat && item.lon) {
+          return addDoc(dbRef, {
+            type: item.type,
+            timestamp: item.timestamp,
+            latitude: item.lat,
+            longitude: item.lon,
+          });
+        }
+      } else if (item.type === 'DetectStop') {
+        if (item.timestamp && item.timestampStop && item.lat && item.lon && item.dur) {
+          return addDoc(dbRef, {
+            type: item.type,
+            timestamp: item.timestamp,
+            timestampStop: item.timestampStop,
+            latitude: item.lat,
+            longitude: item.lon,
+            duration: item.dur,
+          });
+        }
+      }
+      return Promise.resolve();
+    });
+
+    await Promise.all(promises);
+    this.setState({ showSaveButton: false, customCollectionName: '' });
+  };
+
   readFileContent = (file) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -70,7 +136,7 @@ class MapContainer extends Component {
       };
       reader.readAsText(file);
     });
-  };  
+  };
 
   parseFileContent = (fileContent) => {
     const lines = fileContent.split('\n');
@@ -117,7 +183,7 @@ class MapContainer extends Component {
 
   render() {
     const { google } = this.props;
-    const { data, showLocalMap, localData } = this.state;
+    const { data, showLocalMap, localData, showSaveButton, selectedCollection, collections, customCollectionName } = this.state;
 
     const mapStyles = {
       width: '100%',
@@ -134,11 +200,33 @@ class MapContainer extends Component {
 
     return (
       <div>
+        <div>
+          <label htmlFor="collections">Select Collection:</label>
+          <select id="collections" value={selectedCollection} onChange={this.handleCollectionChange}>
+            <option value="">Select a Collection</option>
+            {collections && collections.map((collection) => (
+              <option key={collection} value={collection}>
+                {collection}
+              </option>
+            ))}
+          </select>
+          <button onClick={this.fetchData}>Fetch Data</button>
+        </div>
+        <div>
+          <label htmlFor="customCollectionName">Custom Collection Name:</label>
+          <input
+            type="text"
+            id="customCollectionName"
+            value={customCollectionName}
+            onChange={this.handleCustomCollectionNameChange}
+          />
+        </div>
         <button onClick={this.handleToggleLocalMap}>
           {showLocalMap ? 'View Realtime' : 'View Local'}
         </button>
         <input type="file" onChange={this.handleFileChange} multiple />
         <input type="file" onChange={this.handleSecondFileChange} multiple />
+        {showSaveButton && <button onClick={this.handleSaveToFirestore}>Save to Firestore</button>}
         <Map
           google={google}
           zoom={14}
@@ -207,16 +295,15 @@ class MapContainer extends Component {
                   />
                 );
               }
-              <Polyline
-                    path={localPolylinePaths}
-                    options={{
-                      strokeColor: '#000080',
-                      strokeOpacity: 1,
-                      strokeWeight: 2,
-                    }}
-                  />
-              console.log(Polyline);
             })}
+            <Polyline
+              path={localPolylinePaths}
+              options={{
+                strokeColor: '#000080',
+                strokeOpacity: 1,
+                strokeWeight: 2,
+              }}
+            />
           </Map>
         )}
       </div>
