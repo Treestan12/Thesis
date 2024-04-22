@@ -1,5 +1,5 @@
 import React, { Component } from 'react';
-import { Map, GoogleApiWrapper, Marker, Polyline } from 'google-maps-react';
+import { Map, GoogleApiWrapper, Circle, Marker, Polyline } from 'google-maps-react';
 import { db } from '../Firebase';
 import { collection, getDocs } from 'firebase/firestore';
 
@@ -37,16 +37,40 @@ class MapContainer extends Component {
     this.setState({ showLocalMap: !this.state.showLocalMap });
   };
 
-  handleFileChange = (event) => {
-    const file = event.target.files[0];
-    const reader = new FileReader();
-    reader.onload = () => {
-      const fileContent = reader.result;
-      const localData = this.parseFileContent(fileContent);
-      this.setState({ localData });
-    };
-    reader.readAsText(file);
+  handleFileChange = async (event) => {
+    await this.handleFileUpload(event);
   };
+
+  handleSecondFileChange = async (event) => {
+    await this.handleFileUpload(event);
+  };
+
+  handleFileUpload = async (event) => {
+    const files = event.target.files;
+    let localData = [...this.state.localData];
+  
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const fileContent = await this.readFileContent(file);
+      const parsedData = this.parseFileContent(fileContent);
+      localData = [...localData, ...parsedData];
+    }
+  
+    this.setState({ localData });
+  };
+  
+  readFileContent = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        resolve(event.target.result);
+      };
+      reader.onerror = (error) => {
+        reject(error);
+      };
+      reader.readAsText(file);
+    });
+  };  
 
   parseFileContent = (fileContent) => {
     const lines = fileContent.split('\n');
@@ -79,7 +103,7 @@ class MapContainer extends Component {
           const latStop = parseFloat(line.split(' ')[1].split(':')[1]);
           const lonStop = parseFloat(line.split(' ')[2].split(':')[1]);
           const dur = parseInt(line.split(' ')[3].split(':')[1]);
-          const timestampStop = line.split('')[3].split(':')[1] + ":" + line.split(' ')[3].split(':')[2] + ":" + line.split(' ')[3].split(':')[3];
+          const timestampStop = line.split(':')[1] + ":" + line.split(':')[2] + ":" + line.split(':')[3];
           const timestampStart = lastDetectStop ? lastDetectStop.split(':')[1] + ":" + lastDetectStop.split(':')[2] + ":" + lastDetectStop.split(':')[3] : timestampStop;
           localData.push({ type: 'DetectStop', timestamp: timestampStart, timestampStop, lat: latStop, lon: lonStop, dur });
         }
@@ -101,28 +125,20 @@ class MapContainer extends Component {
     };
 
     const defaultLocation = {
-      lat: 9.4141,
-      lng: 123.24216,
+      lat: 9.305047,
+      lng: 123.305584,
     };
 
-    const blobIcon = (size) => ({
-      url: 'assets/blob.png', 
-      scaledSize: new window.google.maps.Size(size, size), 
-    });
-    
+    const localPolylinePaths = localData.filter(item => item.type === 'Route').map(item => ({ lat: item.lat, lng: item.lon }));
     const dataPolylinePaths = data.filter(item => item.latitude && item.longitude).map(item => ({ lat: item.latitude, lng: item.longitude }));
-    const localPolylinePaths = localData
-      .filter(item => item.type === 'Route')
-      .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-      .map(item => ({ lat: item.lat, lng: item.lon }));
-
 
     return (
       <div>
         <button onClick={this.handleToggleLocalMap}>
           {showLocalMap ? 'View Realtime' : 'View Local'}
         </button>
-        <input type="file" onChange={this.handleFileChange} />
+        <input type="file" onChange={this.handleFileChange} multiple />
+        <input type="file" onChange={this.handleSecondFileChange} multiple />
         <Map
           google={google}
           zoom={14}
@@ -130,11 +146,19 @@ class MapContainer extends Component {
           initialCenter={defaultLocation}
         >
           {data.map((item) => (
-            <Marker
+            <Circle
               key={item.id}
-              position={{ lat: item.latitude, lng: item.longitude }}
-              icon={blobIcon(item.fishCount * 3)} 
+              center={{ lat: item.latitude, lng: item.longitude }}
+              options={{
+                strokeColor: '#ff0000',
+                strokeOpacity: 1,
+                strokeWeight: 1,
+                fillColor: '#ff0000',
+                fillOpacity: 0.25,
+                clickable: true,
+              }}
               onClick={() => this.handleCircleClick(item)}
+              radius={item.fishCount * 3}
             />
           ))}
           <Polyline
@@ -154,28 +178,45 @@ class MapContainer extends Component {
             initialCenter={defaultLocation}
           >
             {localData.map((item, index) => {
-              let size;
               if (item.type === 'Route') {
-                size = 20;
+                return (
+                  <Marker
+                    key={index}
+                    position={{ lat: item.lat, lng: item.lon }}
+                    options={{
+                      clickable: true,
+                    }}
+                  />
+                );
               } else if (item.type === 'DetectStop') {
-                size = item.dur * 2;
+                const radius = item.dur * .5;
+
+                return (
+                  <Circle
+                    key={index}
+                    center={{ lat: item.lat, lng: item.lon }}
+                    radius={radius}
+                    options={{
+                      fillColor: '#ff0000',
+                      strokeColor: '#ff0000',
+                      strokeOpacity: 0.5,
+                      strokeWeight: 0,
+                      fillOpacity: 0.5,
+                      clickable: true,
+                    }}
+                  />
+                );
               }
-              return (
-                <Marker
-                  key={index}
-                  position={{ lat: item.lat, lng: item.lon }}
-                  icon={blobIcon(size)}
-                />
-              );
+              <Polyline
+                    path={localPolylinePaths}
+                    options={{
+                      strokeColor: '#000080',
+                      strokeOpacity: 1,
+                      strokeWeight: 2,
+                    }}
+                  />
+              console.log(Polyline);
             })}
-            <Polyline
-              path={localPolylinePaths}
-              options={{
-                strokeColor: '#000080',
-                strokeOpacity: 1,
-                strokeWeight: 2,
-              }}
-            />
           </Map>
         )}
       </div>

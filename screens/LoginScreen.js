@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ImageBackground, Modal, Button, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ImageBackground, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { db } from '../Firebase'; 
 import { collection, addDoc, getDocs, query, where } from 'firebase/firestore'; 
@@ -46,7 +46,7 @@ const LoginScreen = () => {
   return (
     <ImageBackground source={require('../assets/loginbackground.jpg')} style={styles.backgroundImage}>
       <View style={styles.container}>
-        <Text style={styles.title}>{'ECOFISH'}</Text>
+        <Text style={styles.title}>{'ECHOFISH'}</Text>
         <TextInput
           style={styles.input}
           placeholder="Username"
